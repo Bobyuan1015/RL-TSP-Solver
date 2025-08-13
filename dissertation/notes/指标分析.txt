@@ -1,0 +1,245 @@
+
+实验中状态有4种，现在要求做消融实验，要求设计状态组合，和组合实验目标
+基线组合（完整模型）：A + B + C + D
+（所有状态都启用，作为参考基准，用于比较其他组合的性能变化。）
+
+单个状态移除组合（评估每个状态的独立贡献）：
+
+
+你是一个强化学习 学术专家，要求根据 ##对比消融实验方案  生成 ### 运行结果保存csv，csv是实验原始数据
+1.现在要求进行可视化对比，以挖掘两个维度的研究：
+- 不同状态表示的相对贡献  
+- 泛化性分析
+2.要求博士 或者准博士水准的对比
+3.csv数据的生成逻辑见 ### 方案逻辑 + ### 运行结果保存csv，csv表头字段说明
+4.需要严格按照提供的CSV表头格式来生成指标
+5.你先要设计对比指标，设计的时可以参考 ##参考指标， 如果觉得合适可以选用，当然如果有更好的直接列出来。
+6.根据设计的指标，设计出计算公式
+7.然后再给出 可视化方案
+
+##参考指标：
+* 收敛速度：达到95%最优解的episode数
+* 最终性能：平均路径长度与最优解的Gap
+* 稳定性：5次运行结果的标准差
+* 成功率：在限定episode内找到可行解的比例
+一、主要性能指标（Primary Performance Metrics）
+1. 解质量指标
+- 平均路径长度 (Average Path Length)
+- 最优解Gap (Optimality Gap):
+- 最佳解质量 (Best Solution Quality): 500次实验中的最短路径
+- 解质量分布 (Solution Quality Distribution): 25th, 50th, 75th, 95th分位数
+2. 收敛性指标
+- 收敛速度 (Convergence Speed): 达到95%最优解所需的episode数
+- 收敛成功率 (Convergence Success Rate): 在最大episode内收敛的实验比例
+- 收敛稳定性 (Convergence Stability): 收敛episode数的标准差
+- 早期性能 (Early Performance): 前1000个episode的平均性能
+二、算法稳定性指标（Stability Metrics）
+3. 重现性指标
+- 实例内方差 (Within-Instance Variance): 同一实例5次重复的方差
+- 实例间方差 (Between-Instance Variance): 不同实例间的性能差异
+- 稳定性比值 (Stability Ratio): 实例内方差 / 实例间方差
+- 变异系数 (Coefficient of Variation): 标准差 / 均值
+4. 鲁棒性指标
+- 最差情况性能 (Worst-Case Performance): 95th分位数性能
+- 性能范围 (Performance Range): 最大值 - 最小值
+- 异常值比例 (Outlier Percentage): 统计学意义上的异常值占比
+- 失败率 (Failure Rate): 未找到可行解的实验比例
+
+=================== 实验标识列 ====================
+experiment_id,              # 唯一实验ID：{algorithm}_{state_type}_{cities}_{instance_id}_{run_id}
+algorithm,                  # 算法类型：DQN_visited/DQN_LSTM/Reinforce/ActorCritic/DQN_order/DQN_optimal
+state_representation,       # 状态表示：full/ablation_1/ablation_2/ablation_3/ablation_4
+cities,                     # 城市数量：10/20/30/50
+instance_id,                # TSP实例ID：0-99
+run_id,                     # 重复运行ID：0-4
+dataset_type,               # 数据集类型：random/tsplib95
+experiment_mode,            # 实验模式：per_instance/cross_instance
+
+==================== 训练过程指标 ====================
+episode,                    # 当前episode数
+step,                       # 当前step数
+training_loss,              # 训练损失
+q_value_mean,               # Q值均值（DQN系列）
+policy_loss,                # 策略损失（Policy-based方法）
+value_loss,                 # 价值损失（Actor-Critic）
+entropy_loss,               # 熵损失（Policy-based方法）
+grad_norm,                  # 梯度范数
+learning_rate,              # 当前学习率
+epsilon,                    # 探索率（DQN系列）
+
+==================== 核心Reward指标 ====================
+episode_reward,             # 单episode总奖励
+episode_raw_reward,         # 原始reward（未经任何处理）
+episode_shaped_reward,      # 经过reward shaping的奖励（如果使用）
+step_reward,                # 当前step的即时奖励
+cumulative_reward,          # 累积奖励
+average_step_reward,        # 平均步奖励：episode_reward/episode_length
+
+==================== Reward分解分析 ====================
+distance_penalty,           # 距离惩罚部分：-distance(current, next)
+completion_bonus,           # 完成奖励：-distance(last, start)
+invalid_action_penalty,     # 无效动作惩罚（访问已访问城市）
+early_termination_penalty,  # 提前终止惩罚
+exploration_bonus,          # 探索奖励（如果使用）
+
+==================== Reward统计指标 ====================
+episode_reward_mean,        # 滑动窗口reward均值
+episode_reward_std,         # 滑动窗口reward标准差
+reward_variance,            # 当前episode内reward方差
+max_step_reward,            # 单步最大奖励
+min_step_reward,            # 单步最小奖励
+
+==================== Reward趋势指标 ====================
+reward_improvement,         # 相比上一episode的奖励改进
+best_reward_so_far,         # 历史最佳奖励
+worst_reward_so_far,        # 历史最差奖励
+reward_percentile_rank,     # 当前奖励在历史中的百分位排名
+episodes_since_best_reward, # 距离最佳奖励的episode数
+
+==================== 性能指标 ====================
+episode_length,             # episode步数
+path_length,                # 路径总长度
+optimal_length,             # 最优路径长度（已知时）
+optimality_gap,             # 最优解Gap：(current-optimal)/optimal*100%
+path_nodes,                 # 访问路径序列（字符串形式）
+is_valid_solution,          # 是否为有效解：True/False
+episode_time,               # 单episode用时（秒）
+
+==================== TSP特定reward分析 ====================
+total_distance_penalty,     # 总距离惩罚：所有步的距离和
+return_home_penalty,        # 返回起点惩罚：最后一步距离
+reward_per_distance_unit,   # 每单位距离的奖励
+path_efficiency_reward,     # 路径效率奖励：optimal_length/current_length
+reward_vs_optimal,          # 与最优路径reward的差距
+reward_improvement_rate,    # 奖励改进速率
+reward_learning_curve_auc,  # 学习曲线下面积（衡量整体学习效果）
+
+==================== 收敛性指标 ====================
+best_path_so_far,           # 到目前为止最佳路径长度
+episodes_since_improvement, # 自上次改进后的episode数
+convergence_achieved,       # 是否达到收敛：True/False
+convergence_episode,        # 收敛时的episode数（-1表示未收敛）
+
+
+
+
+
+
+
+##对比消融实验方案
+
+消融目标：验证每个组件的必要性和贡献度
+state状态：current_city_onehot + visited_mask + order_embedding + distances_from_current（按当前城市的距离动态归一化（如除以当前城市到其他城市的最大距离），或使用对数变换以压缩动态范围。） + 当前step在episode第几步
+
+消融组合：
+1. Ablation-1：仅current_city_onehot + visited_mask（移除order_embedding和distances）
+2. Ablation-2：current_city_onehot + visited_mask + order_embedding（移除distances）
+
+### 方案逻辑，伪代码：
+算法组=[算法A，....]
+状态表示类型 = ['full', 'ablation_1', 'ablation_2', 'ablation_3', 'ablation_4']
+城市数列表 = [10, 20, 30, 50]
+总实例数 = 100
+训练实例数 = 80
+测试实例数 = 20
+重复运行次数 = 5
+for 算法A in 算法组：
+    模式一：Per-instance模式
+    for 城市数 in 城市数列表:
+        for 状态表示 in 状态表示类型:
+
+            # 数据集划分
+            all_instances = load_instances(城市数, 总实例数)
+            train_instances = all_instances[:训练实例数]
+            test_instances = all_instances[训练实例数:]
+
+            # 在训练集上独立训练每个实例
+            for 实例ID in range(训练实例数):
+                for 运行次数 in range(重复运行次数):
+                    网络 = 重新初始化()
+                    训练结果 = 从零训练(train_instances[实例ID], 状态表示)
+                    存储训练结果(mode='per_instance_train')
+
+                # 在测试集上zero-shot测试
+                for 实例ID in range(测试实例数):
+                    for 运行次数 in range(重复运行次数):
+                        网络 = 重新初始化()  # 每次测试都用新网络
+                        测试结果 = zero_shot_test(test_instances[实例ID], 状态表示)
+                        存储测试结果(mode='per_instance_test')
+
+    模式二：Cross-instance模式
+    for 城市数 in 城市数列表:
+        for 状态表示 in 状态表示类型:
+            # 数据集划分
+            all_instances = load_instances(城市数, 总实例数)
+            train_instances = all_instances[:训练实例数]
+            test_instances = all_instances[训练实例数:]
+
+            for 运行次数 in range(重复运行次数):
+                网络 = 重新初始化()
+
+                # 在训练集上共享训练
+                for episode in total_episodes:
+                    sample_instance = random.choice(train_instances)
+                    更新网络(sample_instance, 状态表示)
+
+                # 在测试集上zero-shot测试
+                for test_id in range(测试实例数):
+                    测试结果 = zero_shot_inference(网络, test_instances[test_id])
+                    存储测试结果(mode='cross_instance_test')
+
+### 运行结果保存csv，csv表头字段说明：
+algorithm: 算法名称，取值[DQN_visited, DQN_LSTM, Reinforce, ActorCritic, DQN_order, DQN_optimal]
+city_num: 城市数量，取值[10, 20, 30, 50]
+mode: 训练模式，取值[per_instance, cross_instance]
+instance_id: 实例ID，范围0-99，用于标识100个TSP实例
+run_id: 运行次数，范围0-4，表示5次独立运行
+state_type: 状态表示类型，取值[full, ablation_1, ablation_2, ablation_3, ablation_4]
+train_test: 数据集类型，取值[train, test]
+episode: 训练或测试的episode编号，从0开始
+step: episode内的step编号，从0开始
+state: 状态表示，JSON字符串，包含current_city_onehot、visited_mask、order_embedding、distances_from_current（根据state_type选择）
+done: 是否为episode的最后一步，取值[0, 1]
+reward: 该step的奖励值，浮点数
+loss: 该step的损失值，浮点数（DQN类算法记录step级别loss，on-policy算法如Reinforce为空）
+total_reward: 当前epsiode到当前step的reward总和
+current_distance: 当前epsiode到当前step的路径综合
+optimal_distance: 当前instance最优路径的距离
+optimal_path: 当前instance最优路径
+
+
+
+
+
+
+
+
+
+泛化性分析
+
+
+
+样例路径可视（静态 & 交互式）
+• 对 30 城随机抽一条最优路径，用 matplotlib 画节点编号+箭头
+• 若想要交互，可在 notebook 里 %matplotlib notebook 或保存成 graphviz.
+
+
+
+2.消融实验的结果呈现
+表格形式：
+组件类型 | 完整算法 | 移除组件A | 移除组件B | 移除组件A+B | 性能下降%
+状态表示 | 100.0    | 95.2     | 87.3     | 82.1       | 17.9%
+
+
+
+
+可视化展示：
+- 雷达图：展示不同组件对各项指标的影响
+- 热力图：显示组件间的交互作用
+- 箱线图：比较不同消融版本的性能分布
+- 收敛曲线：对比训练过程差异
+
+其他维度
+所有变体（DQN_visited、LSTM、Reinforce、ActorCritic）统一评估，但当前焦点在DQN_optimal消融。添加跨算法比较（如Reinforce vs. DQN_optimal），验证off-policy vs. on-policy在TSP的差异。
+
+

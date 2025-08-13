@@ -1,0 +1,957 @@
+任务一：
+针对TSP（旅行商问题，10-50城市，闭合路径），我设计了如下几个强化学习的方案。现在要求设计实验对比方案，如何才能有学术研究价值，并且得出的有意义和创新的结论。要求创新点或者研究点能够支撑发论文 和博士学术研究。
+1.关键实验设计的说明要求清晰（如何做实验 为得出什么结论）。
+2.你可以修改为的算法方案，最终的效果是要求实验效果好。
+3.回答的内容要求是纯的txt文档格式
+
+
+#任务三（future）：消融实验通过系统性地移除或替换算法中的特定组件，来验证每个组件对整体性能的贡献。对于TSP强化学习问题，需要分析状态表示、网络结构、奖励设计等各组件的独立作用。
+
+
+任务二：
+你是一个tsp和强化学习的专家，我现在要做如下实验，需要你帮我review和优化下，要求合理性，可实现性，其中可视化方案缺失，需要结合对比指标进行详细补充。
+
+你是一个tsp和强化学习的专家，我现在要做如下实验，需要你帮我review和整理下训练过程和测试过程要求保存的指标会保存到csv中，后续可视化只专注于可是csv文件即可。列出这个csv的列名有哪些，以及分别代表的含义
+已有方案情况如下：
+# 1. 算法方案如下：
+
+## 1.1数据集
+tsp数据有两种方案：随机生成坐标，适配了10、20、30、50个城市；tsplib95库 适配了52城市数据
+实现参考：tsp_env.py
+要求：env返回给agent的状态 都要求包含 current_city_onehot + visited_mask + order_embedding + distances_from_current，然后对应agent根据需要自行选择
+
+
+# 1.2 算法方案版本
+QDN_visited版本：
+状态输入：visited_mask
+例子：visited_mask = [1, 0, 0, 1, 0] 表示城市0和3已访问，其余未访问
+Reward差异：无差异，使用基础Reward：每步r = -distance(current, next)；结束r += -distance(last, start)。总为负总路径长度，无shaping或调整。
+MLP网络
+
+DQN_LSTM版本：
+状态输入：visited_mask。  （N=城市数，已访问位置为1，其余为0）（从起点到当前，形状[步数, N]），LSTM捕捉历史
+Reward差异：无差异，
+
+
+Reinforce版本：
+状态输入：visited_mask
+Reward差异：无差异，
+MLP网络
+
+ActorCriti版本c：
+状态输入：visited_mask
+Reward差异：无差异
+MLP网络
+
+DQN_order版本：
+状态输入：current_city_onehot + order_embedding
+例子：
+current_city_onehot = [0, 1, 0, 0, 0] 表示当前在城市1
+order_embedding = [0.2, 0.4, 0.6, 0.8, 1.0] 表示各城市的顺序嵌入值
+
+DQN_optimal版本：
+状态输入：current_city_onehot + visited_mask + order_embedding + distances_from_current
+例子：
+current_city_onehot = [0, 0, 1, 0, 0] 表示当前在城市2
+visited_mask = [1, 0, 1, 0, 0] 表示城市0和2已访问
+order_embedding = [0.2, 0.4, 0.6, 0.8, 1.0]
+distances_from_current = [5, 3, 0, 7, 2] 表示从当前城市2到其他城市的距离分别为5,3,0,7,2
+
+
+要求：
+- 1.网络中visited_mask要特殊处理：
+Mask 要在网络末尾乘 logits，否则训练不稳定。
+logits[visited_mask.bool()] = -1e9
+logp = F.log_softmax(logits, dim=-1)
+
+- 2.神经网络 共用 backbone + 条件输入
+- 3.评估器统一写一次
+
+
+
+# 2.实验方案
+消融实验（Ablation Study）设计方案
+
+实验组织结构：
+基准算法：DQN_optimal（包含所有组件）
+消融目标：验证每个组件的必要性和贡献度
+
+消融实验一：状态表示组件分析
+
+基准状态：current_city_onehot + visited_mask + order_embedding + distances_from_current
+
+消融组合：
+
+1. Ablation-1：仅current_city_onehot + visited_mask（移除order_embedding和distances）
+2. Ablation-2：current_city_onehot + visited_mask + order_embedding（移除distances）
+3. Ablation-3：current_city_onehot + visited_mask + distances_from_current（移除order_embedding）
+4. Ablation-4：仅visited_mask（移除current_city_onehot，对应原DQN_visited）
+
+实验控制：
+
+* 相同网络结构：MLP（512-256-128）
+* 相同训练参数：学习率、批量大小、探索策略
+* 相同数据集：10、20、30、50城市各100个实例
+* 重复实验：每种配置5次独立运行
+
+评价指标：
+
+* 收敛速度：达到95%最优解的episode数
+* 最终性能：平均路径长度与最优解的Gap
+* 稳定性：5次运行结果的标准差
+* 成功率：在限定episode内找到可行解的比例
+
+具体实施方案：
+对于每个实例的每次运行：
+- 网络参数重新随机初始化
+- 从零开始训练
+- 不使用任何预训练权重
+
+实验嵌套结构：
+
+for 状态表示类型 in [full, ablation_1, ablation_2, ablation_3, ablation_4]:
+    for 城市数 in [10, 20, 30, 50]:
+        for 实例ID in range(100):  # 100个不同的TSP实例
+            for 运行次数 in range(5):  # 每个实例重复5次
+                网络 = 重新初始化()
+                结果 = 从零训练(当前实例, 当前状态表示)
+                存储结果
+
+
+
+# 核心消融：原per-instance模式
+for 状态表示类型 in [full, ablation_1, ...]:
+    for 城市数 in [10, 20, 30, 50]:
+        for 实例ID in range(100):  # 全实例
+            for 运行次数 in range(5):
+                网络 = 重新初始化()
+                结果 = 从零训练(当前实例)  # 独立训练
+
+# 泛化扩展：cross-instance模式
+for 状态表示类型 in [full, ablation_1, ...]:  # 或仅基准
+    for 城市数 in [10, 20, 30, 50]:
+        train_instances = 随机选80个
+        test_instances = 剩余20个
+        for 运行次数 in range(5):
+            网络 = 重新初始化()
+            # 共享训练
+            for episode in total_episodes:
+                sample_instance = random.choice(train_instances)
+                更新网络(sample_instance)
+            # zero-shot测试
+            for test_id in test_instances:
+                结果 = 推理(网络, test_id)  # 无训练，直接生成路径
+            存储泛化指标
+
+实际上有两个层次的统计分析：
+
+第一层：单个实例的重复实验分析
+每个TSP实例 × 每种状态表示 = 5次重复运行
+目的：评估算法在该实例上的稳定性
+计算：该实例5次运行的均值、方差
+
+第二层：整体性能分析
+每种城市规模 × 每种状态表示 = 100个实例 × 5次重复 = 500个结果
+目的：评估算法的总体性能和泛化能力
+计算：500个结果的总体统计指标
+
+
+实验对比指标：
+一、主要性能指标（Primary Performance Metrics）
+1. 解质量指标
+- 平均路径长度 (Average Path Length)
+- 最优解Gap (Optimality Gap): (算法解 - 最优解) / 最优解 × 100%
+- 最佳解质量 (Best Solution Quality): 500次实验中的最短路径
+- 解质量分布 (Solution Quality Distribution): 25th, 50th, 75th, 95th分位数
+2. 收敛性指标
+- 收敛速度 (Convergence Speed): 达到95%最优解所需的episode数
+- 收敛成功率 (Convergence Success Rate): 在最大episode内收敛的实验比例
+- 收敛稳定性 (Convergence Stability): 收敛episode数的标准差
+- 早期性能 (Early Performance): 前1000个episode的平均性能
+二、算法稳定性指标（Stability Metrics）
+3. 重现性指标
+- 实例内方差 (Within-Instance Variance): 同一实例5次重复的方差
+- 实例间方差 (Between-Instance Variance): 不同实例间的性能差异
+- 稳定性比值 (Stability Ratio): 实例内方差 / 实例间方差
+- 变异系数 (Coefficient of Variation): 标准差 / 均值
+4. 鲁棒性指标
+- 最差情况性能 (Worst-Case Performance): 95th分位数性能
+- 性能范围 (Performance Range): 最大值 - 最小值
+- 异常值比例 (Outlier Percentage): 统计学意义上的异常值占比
+- 失败率 (Failure Rate): 未找到可行解的实验比例
+
+
+所有变体（DQN_visited、LSTM、Reinforce、ActorCritic）统一评估，但当前焦点在DQN_optimal消融。添加跨算法比较（如Reinforce vs. DQN_optimal），验证off-policy vs. on-policy在TSP的差异。
+
+
+
+
+不需要额外的测试集：
+对消融实验的简短建议
+如果你只想验证 不同状态表示的相对贡献，且实验里用 同一批 60 实例 从头训练 → 场景 1 就够，不需要额外测试集。这也是最节省时间的方案。
+
+如果将来要投会议，审稿人常常会补一问“generalization?” → 你只需 再跑 60×20%≈12 个实例 的 zero-shot，一句话带过即可。
+
+所以：
+• 核心消融实验 ⇒ 训练集直接比就行。
+• 想加泛化卖点 ⇒ 额外留一份 20 % 的 从未训练 实例做一次性测试。
+
+
+
+# 3 可视化方案
+针对上面实验对比，给出可视化方案
+
+所有图统一由 plot_results.ipynb 一次性渲染，保存成 .png / .pdf。
+
+箱线图：解质量总体比较
+
+Tukey 小提琴图
+对同城市规模内 4 种算法做 Kruskal-Wallis + 事后两两检验，把统计显著差异的星号画在图上。
+
+学习曲线（收敛速度）
+对所有实例的 gap 先做「指数滑动平均」(EMA, span=100)，然后按「算法×城市×重复」取均值 + 置信带：
+
+热力图 – 算法 vs 城市（median Gap）
+
+
+
+# 3.代码相关
+1.日志要求保存文件的同时也输出控制台
+2.算法版本使用个不同的agent来实现
+3.有一个总入口函数 能一键启动，参考代码：
+#!/bin/bash
+printf 'y\n' | ./clean.sh
+caffeinate -s python run.py
+4.要求有单独的配置文件模块，里面可以配置 训练和数据集生成的相关选项，比如状态选择等
+5.有数据集生成的模块，训练的时候不需要再生成数据，并且seed可以全局配置
+6.实验中日志、模型、csv都要保存，要求以实验名字/日期/的结构
+
+
+----train函数要求----
+要求训练的时候保存 下面指标到csv文件，方便后续数据分析，指标无法计算时保留空即可
+
+# ==================== 实验标识列 ====================
+experiment_id,              # 唯一实验ID：{algorithm}_{state_type}_{cities}_{instance_id}_{run_id}
+algorithm,                  # 算法类型：DQN_visited/DQN_LSTM/Reinforce/ActorCritic/DQN_order/DQN_optimal
+state_representation,       # 状态表示：full/ablation_1/ablation_2/ablation_3/ablation_4
+cities,                     # 城市数量：10/20/30/50
+instance_id,                # TSP实例ID：0-99
+run_id,                     # 重复运行ID：0-4
+dataset_type,               # 数据集类型：random/tsplib95
+experiment_mode,            # 实验模式：per_instance/cross_instance
+
+# ==================== 训练过程指标 ====================
+episode,                    # 当前episode数
+step,                       # 当前step数
+training_loss,              # 训练损失
+q_value_mean,               # Q值均值（DQN系列）
+policy_loss,                # 策略损失（Policy-based方法）
+value_loss,                 # 价值损失（Actor-Critic）
+entropy_loss,               # 熵损失（Policy-based方法）
+grad_norm,                  # 梯度范数
+learning_rate,              # 当前学习率
+epsilon,                    # 探索率（DQN系列）
+
+# ==================== 核心Reward指标 ====================
+episode_reward,             # 单episode总奖励
+episode_raw_reward,         # 原始reward（未经任何处理）
+episode_shaped_reward,      # 经过reward shaping的奖励（如果使用）
+step_reward,                # 当前step的即时奖励
+cumulative_reward,          # 累积奖励
+average_step_reward,        # 平均步奖励：episode_reward/episode_length
+
+# ==================== Reward分解分析 ====================
+distance_penalty,           # 距离惩罚部分：-distance(current, next)
+completion_bonus,           # 完成奖励：-distance(last, start)
+invalid_action_penalty,     # 无效动作惩罚（访问已访问城市）
+early_termination_penalty,  # 提前终止惩罚
+exploration_bonus,          # 探索奖励（如果使用）
+
+# ==================== Reward统计指标 ====================
+episode_reward_mean,        # 滑动窗口reward均值
+episode_reward_std,         # 滑动窗口reward标准差
+reward_variance,            # 当前episode内reward方差
+max_step_reward,            # 单步最大奖励
+min_step_reward,            # 单步最小奖励
+
+# ==================== Reward趋势指标 ====================
+reward_improvement,         # 相比上一episode的奖励改进
+best_reward_so_far,         # 历史最佳奖励
+worst_reward_so_far,        # 历史最差奖励
+reward_percentile_rank,     # 当前奖励在历史中的百分位排名
+episodes_since_best_reward, # 距离最佳奖励的episode数
+
+# ==================== 性能指标 ====================
+episode_length,             # episode步数
+path_length,                # 路径总长度
+optimal_length,             # 最优路径长度（已知时）
+optimality_gap,             # 最优解Gap：(current-optimal)/optimal*100%
+path_nodes,                 # 访问路径序列（字符串形式）
+is_valid_solution,          # 是否为有效解：True/False
+episode_time,               # 单episode用时（秒）
+
+# ==================== TSP特定reward分析 ====================
+total_distance_penalty,     # 总距离惩罚：所有步的距离和
+return_home_penalty,        # 返回起点惩罚：最后一步距离
+reward_per_distance_unit,   # 每单位距离的奖励
+path_efficiency_reward,     # 路径效率奖励：optimal_length/current_length
+reward_vs_optimal,          # 与最优路径reward的差距
+reward_improvement_rate,    # 奖励改进速率
+reward_learning_curve_auc,  # 学习曲线下面积（衡量整体学习效果）
+
+# ==================== 收敛性指标 ====================
+best_path_so_far,           # 到目前为止最佳路径长度
+episodes_since_improvement, # 自上次改进后的episode数
+convergence_achieved,       # 是否达到收敛：True/False
+convergence_episode,        # 收敛时的episode数（-1表示未收敛）
+convergence_threshold,      # 收敛阈值设置
+early_stop_triggered,       # 是否触发早停：True/False
+
+# ==================== 网络状态指标 ====================
+replay_buffer_size,         # 经验回放缓冲区大小（DQN系列）
+target_update_count,        # 目标网络更新次数（DQN系列）
+memory_usage_mb,            # 内存使用量（MB）
+forward_time_ms,            # 前向传播时间（毫秒）
+backward_time_ms,           # 反向传播时间（毫秒）
+
+# ==================== 状态表示分析 ====================
+state_dim,                  # 状态维度
+current_city,               # 当前城市编号
+visited_count,              # 已访问城市数
+remaining_cities,           # 剩余未访问城市数
+state_entropy,              # 状态熵（多样性度量）
+
+# ==================== 实验环境信息 ====================
+timestamp,                  # 时间戳
+seed,                       # 随机种子
+device,                     # 计算设备：cpu/cuda
+python_version,             # Python版本
+torch_version,              # PyTorch版本
+experiment_config_hash      # 实验配置哈希值（用于复现）
+
+
+------tsp_env.py----
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.spatial.distance import cdist as distance_matrix
+from heapq import heappop, heappush, heapify
+import random
+from typing import Optional, Dict, Any, Tuple, List
+import os
+import urllib.request
+import zipfile
+
+from confs.path import project_root
+
+try:
+    import tsplib95
+except ImportError:
+    print("Warning: tsplib95 not installed. Only random mode will work.")
+    print("Install with: pip install tsplib95")
+    tsplib95 = None
+
+
+class TSPEnvironment:
+    """
+    Traveling Salesman Problem environment for reinforcement learning.
+
+    The agent starts at city 0 and must visit all cities exactly once before returning to the start.
+    """
+
+    def __init__(self,
+                 n_cities: int = 10,
+                 coordinates: Optional[np.ndarray] = None,
+                 seed: Optional[int] = None,
+                 use_tsplib: bool = False,
+                 tsplib_name: Optional[str] = None,
+                 tsplib_path: str = project_root+"/tsplib_data"):
+        """
+        Initialize TSP environment.
+
+        Args:
+            n_cities: Number of cities (used for random mode or if tsplib problem has different size)
+            coordinates: Optional pre-defined city coordinates (n_cities x 2)
+            seed: Random seed for reproducibility
+            use_tsplib: Whether to use TSPLIB95 dataset
+            tsplib_name: Name of TSPLIB problem (e.g., 'berlin52', 'eil51')
+            tsplib_path: Path to TSPLIB data files
+        """
+        self.n_cities = n_cities
+        self.seed = seed
+        self.use_tsplib = use_tsplib
+        self.tsplib_name = tsplib_name
+        self.tsplib_path = tsplib_path
+        self.optimal_distance = None
+
+        # Download and prepare TSPLIB data if needed
+        if use_tsplib and tsplib95 is not None:
+            self._prepare_tsplib_data()
+
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
+
+        # Initialize city coordinates
+        if coordinates is not None:
+            assert coordinates.shape == (n_cities, 2), f"Coordinates must be {n_cities}x2"
+            self.coordinates = coordinates.copy()
+        elif use_tsplib and tsplib95 is not None and tsplib_name:
+            self.coordinates, self.optimal_path = self._load_tsplib_data()
+            self.n_cities = len(self.coordinates)
+        else:
+            self.coordinates = np.random.uniform(0, 1, (n_cities, 2))
+
+        # Precompute distance matrix
+        self.distance_matrix = self._compute_distance_matrix()
+        self.optimal_path, self.optimal_distance = self.get_optimal_solution()
+
+        # State variables
+        self.current_city = 0
+        self.visited = set([0])  # Start at city 0
+        self.path = [0]
+        self.total_distance = 0.0
+        self.done = False
+
+    def _prepare_tsplib_data(self):
+        """Download and prepare TSPLIB data if not exists."""
+        import gzip
+        import shutil
+
+        if not os.path.exists(self.tsplib_path):
+            os.makedirs(self.tsplib_path)
+
+        # List of common EUC_2D problems to download
+        euc_2d_problems = [
+            'berlin52', 'eil51', 'eil76', 'eil101', 'ch130', 'ch150',
+            'a280', 'pr76', 'rat195', 'kroA100', 'kroB100', 'kroC100',
+            'kroD100', 'kroE100', 'rd100', 'st70'
+        ]
+
+        base_url = "http://comopt.ifi.uni-heidelberg.de/software/TSPLIB95/tsp/"
+
+        for problem in euc_2d_problems:
+            tsp_file = f"{problem}.tsp"
+            tsp_gz_file = f"{problem}.tsp.gz"
+            opt_file = f"{problem}.opt.tour"
+            opt_gz_file = f"{problem}.opt.tour.gz"
+
+            tsp_path = os.path.join(self.tsplib_path, tsp_file)
+            tsp_gz_path = os.path.join(self.tsplib_path, tsp_gz_file)
+            opt_path = os.path.join(self.tsplib_path, opt_file)
+            opt_gz_path = os.path.join(self.tsplib_path, opt_gz_file)
+
+            # Download and extract .tsp file
+            if not os.path.exists(tsp_path):
+                try:
+                    # Download the gzipped file
+                    url = f"{base_url}{tsp_gz_file}"
+                    urllib.request.urlretrieve(url, tsp_gz_path)
+                    print(f"Downloaded {tsp_gz_file}   from {url}")
+
+                    # Extract the gzipped file
+                    with gzip.open(tsp_gz_path, 'rb') as f_in:
+                        with open(tsp_path, 'wb') as f_out:
+                            shutil.copyfileobj(f_in, f_out)
+                    print(f"Extracted {tsp_file}")
+
+                    # Optionally remove the gz file after extraction
+                    os.remove(tsp_gz_path)
+                except Exception as e:
+                    print(f"Failed to download or extract {tsp_gz_file}: {e}  {url}")
+
+            # Download and extract .opt.tour file
+            if not os.path.exists(opt_path):
+                try:
+                    # Download the gzipped file
+                    url = f"{base_url}{opt_gz_file}"
+                    urllib.request.urlretrieve(url, opt_gz_path)
+                    print(f"Downloaded {opt_gz_file} from {url}")
+
+                    # Extract the gzipped file
+                    with gzip.open(opt_gz_path, 'rb') as f_in:
+                        with open(opt_path, 'wb') as f_out:
+                            shutil.copyfileobj(f_in, f_out)
+                    print(f"Extracted {opt_file}")
+
+                    # Optionally remove the gz file after extraction
+                    os.remove(opt_gz_path)
+                except Exception as e:
+                    print(f"Failed to download or extract {opt_gz_file}: {e}")
+
+    def _load_tsplib_data(self) -> Tuple[np.ndarray, Optional[float]]:
+        """Load coordinates from TSPLIB dataset."""
+        tsp_file = os.path.join(self.tsplib_path, f"{self.tsplib_name}.tsp")
+        opt_file = os.path.join(self.tsplib_path, f"{self.tsplib_name}.opt.tour")
+
+        if not os.path.exists(tsp_file):
+            raise FileNotFoundError(f"TSPLIB file not found: {tsp_file}")
+
+        # Load TSP problem
+        problem = tsplib95.load(tsp_file)
+
+        # Check if it's EUC_2D type
+        if problem.edge_weight_type != 'EUC_2D':
+            raise ValueError(f"Only EUC_2D problems are supported, got {problem.edge_weight_type}")
+
+        # Extract coordinates
+        coordinates = []
+        for node in sorted(problem.node_coords.keys()):
+            coordinates.append(problem.node_coords[node])
+        coordinates = np.array(coordinates)
+
+        # Normalize coordinates to [0, 1]
+        min_coords = np.min(coordinates, axis=0)
+        max_coords = np.max(coordinates, axis=0)
+        coord_range = max_coords - min_coords
+        normalized_coords = (coordinates - min_coords) / coord_range
+
+        # Load optimal tour and distance if available
+        optimal_distance = None
+        if os.path.exists(opt_file):
+            try:
+                solution = tsplib95.load(opt_file)
+                # Calculate optimal distance with normalized coordinates
+                opt_tour = solution.tours[0]
+
+
+                # Convert to 0-based indexing and ensure starts with 0
+                tour = [city - 1 for city in opt_tour]
+                if tour[0] != 0:
+                    # Rotate tour to start with city 0
+                    start_idx = tour.index(0)
+                    tour = tour[start_idx:] + tour[:start_idx]
+                tour.append(0)  # Return to start
+
+            except Exception as e:
+                print(f"Failed to load optimal solution: {e}")
+
+        return normalized_coords, tour
+
+    def _compute_distance_matrix(self) -> np.ndarray:
+        return distance_matrix(self.coordinates, self.coordinates)
+
+    def reset(self, seed: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Reset environment to initial state.
+
+        Args:
+            seed: Optional seed for new random coordinates
+
+        Returns:
+            Initial state information
+        """
+        if seed is not None:
+            self.seed = seed
+            np.random.seed(seed)
+            random.seed(seed)
+
+            # Only regenerate coordinates if not using TSPLIB
+            if not self.use_tsplib:
+                self.coordinates = np.random.uniform(0, 1, (self.n_cities, 2))
+                self.distance_matrix = self._compute_distance_matrix()
+                self.optimal_path, self.optimal_distance = self.get_optimal_solution()
+
+        # Reset state
+        self.current_city = 0
+        self.visited = set([0])
+        self.path = [0]
+        self.total_distance = 0.0
+        self.done = False
+
+        return self._get_state()
+
+    def step(self, action: int) -> Tuple[Dict[str, Any], float, bool, Dict[str, Any]]:
+        """
+        Take action in environment.
+
+        Args:
+            action: Next city to visit (0 to n_cities-1)
+
+        Returns:
+            state: New state
+            reward: Reward for this action
+            done: Whether episode is finished
+            info: Additional information
+        """
+        if self.done:
+            raise ValueError("Environment is done. Call reset() to start new episode.")
+
+        # Check if action is valid (not already visited, unless returning to start when all visited)
+        if len(self.visited) == self.n_cities:
+            # All cities visited, must return to start
+            if action != 0:
+                # Invalid action - force return to start
+                action = 0
+        else:
+            # Still cities to visit
+            if action in self.visited:
+                # Invalid action - choose random unvisited city
+                unvisited = [i for i in range(self.n_cities) if i not in self.visited]
+                action = random.choice(unvisited)
+
+        # Calculate reward (negative distance)
+        distance = self.distance_matrix[self.current_city, action]
+        reward = -distance
+        self.total_distance += distance
+
+        # Update state
+        self.current_city = action
+        self.visited.add(action)
+        self.path.append(action)
+
+        # Check if episode is done
+        if len(self.visited) == self.n_cities and action == 0:
+            self.done = True  # path = n_city + 1 (return to the start)
+
+        info = {
+            'total_distance': self.total_distance,
+            'path': self.path.copy(),
+            'visited_all': len(self.visited) == self.n_cities,
+            'is_valid_path': self._is_valid_path(),
+            'optimal_distance': self.optimal_distance,
+            'gap_to_optimal': (self.total_distance - self.optimal_distance) / self.optimal_distance if self.optimal_distance else None
+        }
+
+        return self._get_state(), reward, self.done, info
+
+    def _get_state(self) -> Dict[str, Any]:
+        """Get current state representation."""
+        # --------lstm
+        # Convert path to sequence of one-hot vectors
+        sequence_length = len(self.path)
+        sequence_onehot = np.zeros((sequence_length, self.n_cities))
+
+        for i, city in enumerate(self.path):
+            sequence_onehot[i, city] = 1.0
+        # --------lstm
+
+        # Basic one-hot encoding of current city
+        current_city_onehot = np.zeros(self.n_cities)
+        current_city_onehot[self.current_city] = 1.0
+
+        # Visited mask
+        visited_mask = np.zeros(self.n_cities)
+        for city in self.visited:
+            visited_mask[city] = 1.0
+
+        sequence_length = len(self.path)
+        sequence_onehot = np.zeros((sequence_length, self.n_cities))
+
+        for i, city in enumerate(self.path):
+            sequence_onehot[i, city] = 1.0
+        # Distance to all cities from current position
+        distances_from_current = self.distance_matrix[self.current_city].copy()
+
+        # Normalize distances to [0, 1]
+        max_dist = np.max(self.distance_matrix)
+        distances_from_current = distances_from_current / max_dist if max_dist > 0 else distances_from_current
+
+        # Order embedding: use visit order as values
+        order_embedding = np.zeros(self.n_cities)
+        for i, city in enumerate(self.path):
+            order_embedding[city] = min((i+1)/self.n_cities, 1)
+
+        return {
+            'current_city_onehot': current_city_onehot,   #  1:current city  0:other order_embedding   DQNOptimal
+            'sequence_onehot': sequence_onehot,
+            'sequence_length': sequence_length,
+            'visited_mask': visited_mask,  # 1:visited 0: unvisited         basic  DQNLSTM  reinforce  ActorCritic  DQNOptimal
+            'order_embedding': order_embedding,  # visited index / n_cities        order_embedding   DQNOptimal
+            'distances_from_current': distances_from_current, #distance to others       DQNOptimal
+            'current_city': self.current_city,
+            'visited': self.visited.copy(),
+            'path_sequence': self.path.copy(),
+            'coordinates': self.coordinates.copy()
+        }
+
+    def _is_valid_path(self) -> bool:
+        """Check if current path is valid (visits all cities exactly once)."""
+        if not self.done:
+            return False
+        return len(set(self.path[:-1])) == self.n_cities and self.path[-1] == 0
+
+    def get_valid_actions(self) -> List[int]:
+        """Get list of valid actions from current state."""
+        if len(self.visited) == self.n_cities:
+            # Must return to start
+            return [0]
+        else:
+            # Can visit any unvisited city
+            return [i for i in range(self.n_cities) if i not in self.visited]
+
+    def get_action_mask(self) -> np.ndarray:
+        """Get mask for valid actions (1 for valid, 0 for invalid)."""
+        mask = np.zeros(self.n_cities)
+        valid_actions = self.get_valid_actions()
+        mask[valid_actions] = 1.0
+        return mask
+
+    def render(self, save_path: Optional[str] = None, show: bool = True) -> None:
+        """
+        Visualize current state of TSP.
+
+        Args:
+            save_path: Optional path to save figure
+            show: Whether to display figure
+        """
+        plt.figure(figsize=(8, 8))
+
+        # Plot cities
+        plt.scatter(self.coordinates[:, 0], self.coordinates[:, 1],
+                    c='red', s=100, zorder=3)
+
+        # Label cities
+        for i, (x, y) in enumerate(self.coordinates):
+            plt.annotate(str(i), (x, y), xytext=(5, 5),
+                         textcoords='offset points', fontsize=12)
+
+        # Plot path
+        if len(self.path) > 1:
+            path_coords = self.coordinates[self.path]
+            plt.plot(path_coords[:, 0], path_coords[:, 1],
+                     'b-', linewidth=2, alpha=0.7, zorder=2)
+
+            # Highlight current city
+            current_coord = self.coordinates[self.current_city]
+            plt.scatter(current_coord[0], current_coord[1],
+                        c='green', s=200, marker='*', zorder=4)
+
+        title = f'TSP Environment - {len(self.visited)}/{self.n_cities} cities visited\n'
+        title += f'Current city: {self.current_city}, Total distance: {self.total_distance:.3f}'
+        if self.use_tsplib and self.tsplib_name:
+            title += f'\nDataset: {self.tsplib_name}'
+            if self.optimal_distance:
+                gap = (self.total_distance - self.optimal_distance) / self.optimal_distance * 100
+                title += f' (Optimal: {self.optimal_distance:.3f}, Gap: {gap:.1f}%)'
+
+        plt.title(title)
+        plt.xlabel('X Coordinate')
+        plt.ylabel('Y Coordinate')
+        plt.grid(True, alpha=0.3)
+        plt.axis('equal')
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        if show:
+            plt.show()
+        else:
+            plt.close()
+
+    def get_optimal_solution(self) -> Tuple[List[int], float]:
+        """
+        Get optimal solution using nearest neighbor heuristic with a priority queue.
+        Note: This is not guaranteed to be optimal, just a reasonable approximation.
+        For TSPLIB problems, returns the known optimal if available.
+        """
+        # If using TSPLIB and optimal solution is known, try to load it
+        if self.use_tsplib and self.tsplib_name and self.optimal_path:
+            total_dist = 0
+            for index, current in enumerate(self.optimal_path[:-1]):
+                print('index=',index,current,self.optimal_path[index+1])
+                total_dist += self.distance_matrix[current, self.optimal_path[index+1]]
+
+            return self.optimal_path, total_dist
+
+
+        # Fallback to nearest neighbor heuristic
+        # Initialize heap with distances from starting city (0)
+        heap = [(self.distance_matrix[0, i], i) for i in range(1, self.n_cities)]
+        heapify(heap)
+        path = [0]
+        total_dist = 0.0
+        visited = {0}  # Track visited cities
+
+        current = 0
+        while len(visited) < self.n_cities:
+            # Get nearest unvisited city
+            while heap:
+                dist, next_city = heappop(heap)
+                if next_city not in visited:
+                    break
+            else:
+                break  # No more unvisited cities
+
+            total_dist += dist
+            path.append(next_city)
+            visited.add(next_city)
+
+            # Add distances to unvisited cities from the new current city
+            current = next_city
+            for i in range(1, self.n_cities):
+                if i not in visited:
+                    heappush(heap, (self.distance_matrix[current, i], i))
+
+        # Return to start
+        total_dist += self.distance_matrix[current, 0]
+        path.append(0)
+
+        return path, total_dist
+
+
+# Usage examples:
+def create_random_env():
+    """Create environment with random coordinates."""
+    return TSPEnvironment(n_cities=10, seed=42, use_tsplib=False)
+
+
+def create_tsplib_env(problem_name='berlin52'):
+    """Create environment with TSPLIB dataset."""
+    return TSPEnvironment(use_tsplib=True, tsplib_name=problem_name)
+
+
+一、研究创新点与学术价值定位
+
+状态表示对强化学习TSP求解的影响机制研究
+创新点：系统性比较不同状态表示方式（visited_mask、order_embedding、distance信息）对算法性能的影响
+学术价值：填补TSP强化学习中状态表示设计理论空白
+
+记忆机制在序列决策问题中的作用机制分析
+创新点：对比LSTM与MLP在TSP求解中的表现，分析记忆对路径优化的贡献
+学术价值：为序列决策问题的神经网络架构设计提供指导
+
+多尺度TSP问题的可扩展性分析
+创新点：研究算法在不同城市规模下的性能变化规律和泛化能力
+学术价值：为强化学习在组合优化问题中的应用提供理论支撑
+
+实验目标：
+实验1：合成数据上的性能比较
+如何：为每个城市规模（10-50）在80%合成实例上训练每个RL变体和基线。在保留的20%上测试。通过网格搜索调优超参数（lr, gamma=0.99）。
+为什么：比较原始性能，识别哪个状态/算法在最优性和速度上出色。
+预期结论：DQN_optimal实现最低最优性差距（例如，10城市<5%，50城市<15%），由于丰富状态，优于基本变体10-20%，支持状态设计创新。ActorCritic通过优势估计最快收敛（少30% episode）。
+
+实验2：状态表示的消融
+如何：固定DQN框架；比较DQN_optimal状态子集的变体（例如，仅掩码 vs. +order vs. +distances vs. 完整）。如Exp1训练/测试。
+为什么：隔离每个状态组件的贡献，量化其影响。
+预期结论：添加距离减少差距8-12%，顺序5-7%；完整组合协同，产生15-20%改进。这提供RL优化中特征工程的新见解，可发表为“解剖TSP RL中的状态空间”。
+
+
+实验4：序列建模 vs. 无状态方法
+如何：在所有数据集上比较DQN_LSTM（序列） vs. DQN_optimal（无状态但丰富），测量性能和时间。
+为什么：评估历史建模（LSTM）是否优于丰富瞬时状态在TSP中的益处。
+预期结论：LSTM在泛化更好（TSPLIB上差距少5%），但慢2倍；无状态更好地扩展到50城市。这突出权衡，支持高效RL架构研究。
+
+
+
+futurework：
+问题分析和创新点
+
+输入变化：原状态（如visited_mask [N]、current_city_onehot [N]、order_embedding [N]、distances_from_current [N]）依赖于N。训练时N固定（e.g., 50），测试时N=52导致维度 mismatch。
+
+城市数量变化：合成N=10-50，Berlin52 N=52。直接测试会崩溃，除非模型设计为N-invariant。
+
+创新：引入padding到固定最大N（e.g., 64），结合可变长度处理（e.g., masking in MLP or LSTM）。这是一种轻量级方法，避免重训全GNN，适合小规模TSP研究。学术价值：首次探讨RL-TSP中跨N泛化，填补从固定N到变N的空白，支持博士研究 on “Scalable RL for Variable-Sized Combinatorial Problems”。
+
+
+
+要求训练的时候保存 下面指标到csv文件，方便后续数据分析，指标无法计算时保留空即可
+
+
+
+
+样例路径可视（静态 & 交互式）
+• 对 30 城随机抽一条最优路径，用 matplotlib 画节点编号+箭头
+• 若想要交互，可在 notebook 里 %matplotlib notebook 或保存成 graphviz.
+
+
+
+
+
+
+# ==================== 实验标识列 ====================
+experiment_id,              # 唯一实验ID：{algorithm}_{state_type}_{cities}_{instance_id}_{run_id}
+algorithm,                  # 算法类型：DQN_visited/DQN_LSTM/Reinforce/ActorCritic/DQN_order/DQN_optimal
+state_representation,       # 状态表示：full/ablation_1/ablation_2/ablation_3/ablation_4
+cities,                     # 城市数量：10/20/30/50
+instance_id,                # TSP实例ID：0-99
+run_id,                     # 重复运行ID：0-4
+dataset_type,               # 数据集类型：random/tsplib95
+experiment_mode,            # 实验模式：per_instance/cross_instance
+
+# ==================== 训练过程指标 ====================
+episode,                    # 当前episode数
+step,                       # 当前step数
+training_loss,              # 训练损失
+q_value_mean,               # Q值均值（DQN系列）
+policy_loss,                # 策略损失（Policy-based方法）
+value_loss,                 # 价值损失（Actor-Critic）
+entropy_loss,               # 熵损失（Policy-based方法）
+grad_norm,                  # 梯度范数
+learning_rate,              # 当前学习率
+epsilon,                    # 探索率（DQN系列）
+
+# ==================== 核心Reward指标 ====================
+episode_reward,             # 单episode总奖励
+episode_raw_reward,         # 原始reward（未经任何处理）
+episode_shaped_reward,      # 经过reward shaping的奖励（如果使用）
+step_reward,                # 当前step的即时奖励
+cumulative_reward,          # 累积奖励
+average_step_reward,        # 平均步奖励：episode_reward/episode_length
+
+# ==================== Reward分解分析 ====================
+distance_penalty,           # 距离惩罚部分：-distance(current, next)
+completion_bonus,           # 完成奖励：-distance(last, start)
+invalid_action_penalty,     # 无效动作惩罚（访问已访问城市）
+early_termination_penalty,  # 提前终止惩罚
+exploration_bonus,          # 探索奖励（如果使用）
+
+# ==================== Reward统计指标 ====================
+episode_reward_mean,        # 滑动窗口reward均值
+episode_reward_std,         # 滑动窗口reward标准差
+reward_variance,            # 当前episode内reward方差
+max_step_reward,            # 单步最大奖励
+min_step_reward,            # 单步最小奖励
+
+# ==================== Reward趋势指标 ====================
+reward_improvement,         # 相比上一episode的奖励改进
+best_reward_so_far,         # 历史最佳奖励
+worst_reward_so_far,        # 历史最差奖励
+reward_percentile_rank,     # 当前奖励在历史中的百分位排名
+episodes_since_best_reward, # 距离最佳奖励的episode数
+
+# ==================== 性能指标 ====================
+episode_length,             # episode步数
+path_length,                # 路径总长度
+optimal_length,             # 最优路径长度（已知时）
+optimality_gap,             # 最优解Gap：(current-optimal)/optimal*100%
+path_nodes,                 # 访问路径序列（字符串形式）
+is_valid_solution,          # 是否为有效解：True/False
+episode_time,               # 单episode用时（秒）
+
+# ==================== TSP特定reward分析 ====================
+total_distance_penalty,     # 总距离惩罚：所有步的距离和
+return_home_penalty,        # 返回起点惩罚：最后一步距离
+reward_per_distance_unit,   # 每单位距离的奖励
+path_efficiency_reward,     # 路径效率奖励：optimal_length/current_length
+reward_vs_optimal,          # 与最优路径reward的差距
+reward_improvement_rate,    # 奖励改进速率
+reward_learning_curve_auc,  # 学习曲线下面积（衡量整体学习效果）
+
+# ==================== 收敛性指标 ====================
+best_path_so_far,           # 到目前为止最佳路径长度
+episodes_since_improvement, # 自上次改进后的episode数
+convergence_achieved,       # 是否达到收敛：True/False
+convergence_episode,        # 收敛时的episode数（-1表示未收敛）
+convergence_threshold,      # 收敛阈值设置
+early_stop_triggered,       # 是否触发早停：True/False
+
+# ==================== 网络状态指标 ====================
+replay_buffer_size,         # 经验回放缓冲区大小（DQN系列）
+target_update_count,        # 目标网络更新次数（DQN系列）
+memory_usage_mb,            # 内存使用量（MB）
+forward_time_ms,            # 前向传播时间（毫秒）
+backward_time_ms,           # 反向传播时间（毫秒）
+
+# ==================== 状态表示分析 ====================
+state_dim,                  # 状态维度
+current_city,               # 当前城市编号
+visited_count,              # 已访问城市数
+remaining_cities,           # 剩余未访问城市数
+state_entropy,              # 状态熵（多样性度量）
+
+# ==================== 实验环境信息 ====================
+timestamp,                  # 时间戳
+seed,                       # 随机种子
+device,                     # 计算设备：cpu/cuda
+python_version,             # Python版本
+torch_version,              # PyTorch版本
+experiment_config_hash      # 实验配置哈希值（用于复现）
