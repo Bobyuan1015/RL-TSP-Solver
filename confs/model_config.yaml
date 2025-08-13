@@ -1,0 +1,65 @@
+# Model Architecture Configuration
+
+# DQN Configuration
+DQN:
+  hidden_dims: [512, 256, 128]
+  activation: "relu"
+  dropout: 0.2
+  learning_rate: 0.001
+  epsilon_start: 1.0
+  epsilon_end: 0.01
+  epsilon_decay: 0.995
+  memory_size: 10000
+  batch_size: 64
+  target_update: 100
+  gamma: 0.99
+
+# DQN LSTM Configuration  
+DQN_LSTM:
+  lstm_hidden_dim: 256
+  lstm_num_layers: 2
+  lstm_dropout: 0.2
+  mlp_hidden_dims: [128]
+  activation: "relu"
+  learning_rate: 0.001
+  epsilon_start: 1.0
+  epsilon_end: 0.01
+  epsilon_decay: 0.995
+  memory_size: 10000
+  batch_size: 64
+  target_update: 100
+  gamma: 0.99
+  
+# Reinforce Configuration
+Reinforce:
+  hidden_dims: [512, 256, 128]
+  activation: "relu"
+  dropout: 0.2
+  learning_rate: 0.001
+  gamma: 0.99
+  
+# Actor-Critic Configuration
+ActorCritic:
+  actor_hidden_dims: [512, 256, 128]
+  critic_hidden_dims: [512, 256, 128]
+  activation: "relu"
+  dropout: 0.2
+  actor_learning_rate: 0.001
+  critic_learning_rate: 0.001
+  gamma: 0.99
+  
+# PPO Configuration
+PPO:
+  actor_hidden_dims: [512, 256, 128]
+  critic_hidden_dims: [512, 256, 128]
+  activation: "relu" 
+  dropout: 0.2
+  actor_learning_rate: 0.0003
+  critic_learning_rate: 0.001
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  entropy_coefficient: 0.01
+  value_loss_coefficient: 0.5
+  epochs_per_update: 4
+  mini_batch_size: 64

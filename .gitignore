@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 
-# Virtual environments
+# Virtual env
 venv/
 env/
 .venv/
@@ -50,3 +50,11 @@ logs/
 data/
 models/
 wandb/
+results/
+dissertation/notes/experiment_plots/
+dissertation/data/
+*.log
+dissertation/agents/__pycache__
+dissertation/utils/__pycache__/
+dissertation/notes/__pycache__
+dissertation/notes/*csv

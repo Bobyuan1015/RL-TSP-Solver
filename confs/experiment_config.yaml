@@ -1,0 +1,69 @@
+# Experiment Configuration
+experiment:
+  name: "tsp_rl_ablation"
+  seed: 42
+  
+# Dataset Configuration
+dataset:
+#  city_nums: [10, 20, 30, 50]
+  city_nums: [10]
+  total_instances: 5
+  train_ratio: 0.8  # Training set percentage (0.8 = 80%)
+  use_tsplib: False
+  tsplib_problems: ["berlin52"]
+  data_path: "data"
+  save_generated: True
+  coordinate_unique_check: True
+  
+# Training Configuration
+training:
+  episodes_per_instance: 101     # Episodes per instance in per-instance mode
+  episodes_cross_instance: 102  # Total episodes in cross-instance mode
+  repeat_runs: 2                  # Number of independent runs per experiment
+  batch_size: 4
+  learning_rate: 0.001
+  save_model_every: 100          # Save model every N episodes
+  evaluate_every: 2000            # Evaluate agent every N episodes
+  
+# State Representation Types
+state_types:
+  full: ["current_city_onehot", "visited_mask", "order_embedding", "distances_from_current"]
+
+  ablation_1: ["visited_mask", "order_embedding", "distances_from_current"]  # 移除 current_city_onehot
+  ablation_2: ["current_city_onehot", "order_embedding", "distances_from_current"]  # 移除 visited_mask
+  ablation_3: ["current_city_onehot", "visited_mask", "distances_from_current"]  # 移除 order_embedding
+  ablation_4: ["current_city_onehot", "visited_mask", "order_embedding"]  # 移除 distances_from_current
+
+  ablation_5: ["order_embedding", "distances_from_current"]  # 移除 current_city_onehot + visited_mask
+  ablation_6: ["visited_mask", "distances_from_current"]  # 移除 current_city_onehot + order_embedding
+  ablation_7: ["visited_mask", "order_embedding"]  # 移除 current_city_onehot + distances_from_current
+  ablation_8: ["current_city_onehot", "distances_from_current"]  # 移除 visited_mask + order_embedding
+  ablation_9: ["current_city_onehot", "order_embedding"]  # 移除 visited_mask + distances_from_current
+  ablation_10: ["current_city_onehot", "visited_mask"]  # 移除 order_embedding + distances_from_current
+  
+# Algorithm Configuration
+algorithms:
+  - "DQN"
+#  - "DQN_LSTM"
+#  - "Reinforce"
+#  - "ActorCritic"
+#  - "PPO"
+
+# Modes
+modes:
+  - "per_instance"
+#  - "cross_instance"
+  
+# Logging Configuration
+logging:
+  level: "INFO"
+  save_to_file: True
+  console_output: True
+  format: "[{timestamp}][{algorithm}][{city_num}][{state_type}][{episode}][{step}]: {message}"
+  results_dir: "results"
+  
+# Evaluation Configuration  
+evaluation:
+  save_models: True
+  save_csv: True
+  plot_results: True
